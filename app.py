@@ -1,12 +1,21 @@
-import sqlite3
+import os
+import psycopg2
 from flask import Flask, jsonify, render_template, request
 
 app = Flask(__name__)
 
+# Render 설정창에 입력한 금고 주소(DATABASE_URL)를 자동으로 가져옵니다.
+DATABASE_URL = os.environ.get("DATABASE_URL")
 
-# 데이터베이스 초기화 함수
+
+# 클라우드 데이터베이스와 연결하는 함수
+def get_db_connection():
+    return psycopg2.connect(DATABASE_URL, sslmode="require")
+
+
+# 데이터베이스 초기화 (테이블 생성 및 샘플 데이터 삽입)
 def init_db():
-    conn = sqlite3.connect("hotdeal.db")
+    conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute(
         """
@@ -18,16 +27,18 @@ def init_db():
         )
     """
     )
-    # 테스트용 샘플 데이터 (농심 햇반 바코드)
+    # 클라우드 DB(PostgreSQL) 문법에 맞게 'ON CONFLICT' 구문 사용
     cursor.execute(
-        "INSERT OR IGNORE INTO products VALUES ('8801045291313', '햇반 210g', 900, 1300)"
+        "INSERT INTO products VALUES ('8801045291313', '햇반 210g', 900, 1300) ON CONFLICT (barcode) DO NOTHING"
     )
     conn.commit()
+    cursor.close()
     conn.close()
 
 
-# ★ 중요: 클라우드(Gunicorn) 환경에서도 무조건 데이터베이스가 먼저 생성되도록 위치 변경!
-init_db()
+# 앱이 켜질 때 클라우드에 테이블을 자동으로 만듭니다.
+if DATABASE_URL:
+    init_db()
 
 
 @app.route("/")
@@ -37,13 +48,14 @@ def index():
 
 @app.route("/api/scan/<barcode>", methods=["GET", "POST"])
 def scan_barcode(barcode):
-    conn = sqlite3.connect("hotdeal.db")
+    conn = get_db_connection()
     cursor = conn.cursor()
 
     if request.method == "GET":
         try:
+            # PostgreSQL 표준에 맞게 %s 사용
             cursor.execute(
-                "SELECT * FROM products WHERE barcode = ?", (barcode,)
+                "SELECT * FROM products WHERE barcode = %s", (barcode,)
             )
             product = cursor.fetchone()
             if product:
@@ -56,21 +68,20 @@ def scan_barcode(barcode):
                         "normal_price": product[3],
                     }
                 )
-            # 등록되지 않은 상품이면 안전하게 정보 전송
             return jsonify(
                 {"success": True, "exists": False, "barcode": barcode}
             )
         except Exception as e:
-            # 혹시나 또 에러가 나면 500을 뱉기 전에 에러 원인을 폰으로 전송
             return jsonify({"success": False, "error": str(e)}), 500
         finally:
+            cursor.close()
             conn.close()
 
     elif request.method == "POST":
         data = request.json
         try:
             cursor.execute(
-                "INSERT INTO products VALUES (?, ?, ?, ?)",
+                "INSERT INTO products VALUES (%s, %s, %s, %s)",
                 (
                     barcode,
                     data["name"],
@@ -85,9 +96,9 @@ def scan_barcode(barcode):
         except Exception as e:
             return jsonify({"success": False, "message": str(e)}), 500
         finally:
+            cursor.close()
             conn.close()
 
 
 if __name__ == "__main__":
-    # 로컬 컴퓨터 테스트용
     app.run(host="0.0.0.0", port=5000, debug=True)
