@@ -37,31 +37,50 @@
     </main>
     <script>
         let activeBarcode = ""; let targetHotdealPrice = 0;
+        
         function onScanSuccess(decodedText) {
-            if (activeBarcode === decodedText) return; activeBarcode = decodedText;
-            fetch(`/api/scan/${decodedText}`).then(res => res.json()).then(data => {
-                const resSection = document.getElementById('result-section');
-                const infoDiv = document.getElementById('product-info');
-                const compareBox = document.getElementById('compare-box');
-                const registerBox = document.getElementById('register-box');
-                resSection.classList.remove('hidden');
-                document.getElementById('verdict').innerText = "";
-                if (data.exists) {
-                    targetHotdealPrice = data.hotdeal_price;
-                    infoDiv.innerHTML = `<h2 class="text-xl font-bold text-emerald-400">${data.name}</h2><p class="text-sm text-gray-400">바코드: ${activeBarcode}</p><div class="mt-2 text-sm"><div>🔥 기준 핫딜가: <span class="text-amber-400 font-bold">${data.hotdeal_price}원</span></div></div>`;
-                    compareBox.classList.remove('hidden'); registerBox.classList.add('hidden');
-                } else {
-                    infoDiv.innerHTML = `<h2 class="text-xl font-bold text-gray-300">미등록 상품</h2><p class="text-sm text-gray-400">바코드: ${activeBarcode}</p>`;
-                    compareBox.classList.add('hidden'); registerBox.classList.remove('hidden');
-                }
-            });
+            // [진단 1] 카메라가 인식을 성공하면 무조건 무조건 팝업이 뜹니다!
+            alert("바코드 인식 성공! 숫자: " + decodedText);
+            
+            if (activeBarcode === decodedText) return; 
+            activeBarcode = decodedText;
+            
+            fetch(`/api/scan/${decodedText}`)
+                .then(res => {
+                    if (!res.ok) throw new Error("서버 응답 에러 (상태코드: " + res.status + ")");
+                    return res.json();
+                })
+                .then(data => {
+                    const resSection = document.getElementById('result-section');
+                    const infoDiv = document.getElementById('product-info');
+                    const compareBox = document.getElementById('compare-box');
+                    const registerBox = document.getElementById('register-box');
+                    
+                    resSection.classList.remove('hidden');
+                    document.getElementById('verdict').innerText = "";
+                    
+                    if (data.exists) {
+                        targetHotdealPrice = data.hotdeal_price;
+                        infoDiv.innerHTML = `<h2 class="text-xl font-bold text-emerald-400">${data.name}</h2><p class="text-sm text-gray-400">바코드: ${activeBarcode}</p><div class="mt-2 text-sm"><div>🔥 기준 핫딜가: <span class="text-amber-400 font-bold">${data.hotdeal_price}원</span></div></div>`;
+                        compareBox.classList.remove('hidden'); registerBox.classList.add('hidden');
+                    } else {
+                        infoDiv.innerHTML = `<h2 class="text-xl font-bold text-gray-300">미등록 상품</h2><p class="text-sm text-gray-400">바코드: ${activeBarcode}</p>`;
+                        compareBox.classList.add('hidden'); registerBox.classList.remove('hidden');
+                    }
+                })
+                .catch(err => {
+                    // [진단 2] 서버 통신 중 에러가 나면 팝업으로 알려줍니다.
+                    alert("서버 통신 에러 발생: " + err.message);
+                });
         }
+        
         function comparePrice() {
             const current = parseInt(document.getElementById('current-price').value);
             const verdict = document.getElementById('verdict');
             if (current <= targetHotdealPrice) { verdict.className = "text-center font-extrabold text-2xl mt-4 text-emerald-400"; verdict.innerText = "🚨 역대급 핫딜! 당장 사세요! 🚨"; }
             else { verdict.className = "text-center font-extrabold text-xl mt-4 text-rose-400"; verdict.innerText = "핫딜이 아닙니다."; }
         }
+        
         function registerProduct() {
             const name = document.getElementById('new-name').value;
             const hotdeal_price = document.getElementById('new-hotdeal').value;
@@ -71,7 +90,9 @@
                 body: JSON.stringify({ name, hotdeal_price, normal_price })
             }).then(res => res.json()).then(data => { if(data.success) { alert(data.message); location.reload(); } });
         }
-        const html5QrcodeScanner = new Html5QrcodeScanner("reader", { fps: 10, qrbox: 250 });
+        
+        // QR/바코드 스캐너 박스 크기 조절 및 반응 속도 개선
+        const html5QrcodeScanner = new Html5QrcodeScanner("reader", { fps: 15, qrbox: { width: 250, height: 150 } });
         html5QrcodeScanner.render(onScanSuccess);
     </script>
 </body>
