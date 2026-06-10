@@ -34,23 +34,40 @@
                 <button onclick="registerProduct()" class="w-full bg-emerald-500 text-white font-bold py-2 rounded-lg">내 장부에 저장하기</button>
             </div>
         </div>
+        <div class="mt-4 p-3 bg-black rounded-xl border border-gray-800">
+            <p class="text-xs font-bold text-gray-500 mb-1">📟 시스템 상태 모니터</p>
+            <div id="debug-log" class="text-xs font-mono text-green-400 h-24 overflow-y-auto space-y-1">
+                [시스템이 준비되었습니다.]
+            </div>
+        </div>
     </main>
     <script>
         let activeBarcode = ""; let targetHotdealPrice = 0;
         
+        // 화면에 로그를 찍어주는 도우미 함수
+        function printLog(msg) {
+            const logDiv = document.getElementById('debug-log');
+            logDiv.innerHTML += `<div>> ${msg}</div>`;
+            logDiv.scrollTop = logDiv.scrollHeight; // 스크롤 맨 아래로
+        }
+        
         function onScanSuccess(decodedText) {
-            // [진단 1] 카메라가 인식을 성공하면 무조건 무조건 팝업이 뜹니다!
-            alert("바코드 인식 성공! 숫자: " + decodedText);
-            
+            // 연속 스캔 방지 처리 대폭 강화
             if (activeBarcode === decodedText) return; 
             activeBarcode = decodedText;
             
+            printLog(`📸 바코드 감지 성공! 번호: ${decodedText}`);
+            printLog(`📡 서버로 데이터 조회 요청 중...`);
+            
             fetch(`/api/scan/${decodedText}`)
                 .then(res => {
-                    if (!res.ok) throw new Error("서버 응답 에러 (상태코드: " + res.status + ")");
+                    printLog(`ℹ️ 서버 응답 도착 (상태코드: ${res.status})`);
+                    if (!res.ok) throw new Error(`서버 에러 (${res.status})`);
                     return res.json();
                 })
                 .then(data => {
+                    printLog(`✅ 수신 데이터 분석 완료: ${JSON.stringify(data)}`);
+                    
                     const resSection = document.getElementById('result-section');
                     const infoDiv = document.getElementById('product-info');
                     const compareBox = document.getElementById('compare-box');
@@ -60,17 +77,19 @@
                     document.getElementById('verdict').innerText = "";
                     
                     if (data.exists) {
+                        printLog(`📂 등록된 상품 발견! [${data.name}]`);
                         targetHotdealPrice = data.hotdeal_price;
                         infoDiv.innerHTML = `<h2 class="text-xl font-bold text-emerald-400">${data.name}</h2><p class="text-sm text-gray-400">바코드: ${activeBarcode}</p><div class="mt-2 text-sm"><div>🔥 기준 핫딜가: <span class="text-amber-400 font-bold">${data.hotdeal_price}원</span></div></div>`;
                         compareBox.classList.remove('hidden'); registerBox.classList.add('hidden');
                     } else {
+                        printLog(`⚠️ 미등록 상품입니다. 등록 창을 엽니다.`);
                         infoDiv.innerHTML = `<h2 class="text-xl font-bold text-gray-300">미등록 상품</h2><p class="text-sm text-gray-400">바코드: ${activeBarcode}</p>`;
-                        compareBox.classList.add('hidden'); registerBox.classList.remove('hidden');
+                        compareBox.classList.add('hidden'); 
+                        registerBox.classList.remove('hidden'); // 등록창 강제 노출
                     }
                 })
                 .catch(err => {
-                    // [진단 2] 서버 통신 중 에러가 나면 팝업으로 알려줍니다.
-                    alert("서버 통신 에러 발생: " + err.message);
+                    printLog(`❌ 통신 실패 오류: ${err.message}`);
                 });
         }
         
@@ -85,14 +104,14 @@
             const name = document.getElementById('new-name').value;
             const hotdeal_price = document.getElementById('new-hotdeal').value;
             const normal_price = document.getElementById('new-normal').value;
+            printLog(`💾 신규 상품 등록 요청 중... [${name}]`);
             fetch(`/api/scan/${activeBarcode}`, {
                 method: 'POST', headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ name, hotdeal_price, normal_price })
-            }).then(res => res.json()).then(data => { if(data.success) { alert(data.message); location.reload(); } });
+            }).then(res => res.json()).then(data => { if(data.success) { printLog(`🎉 등록 완료!`); alert(data.message); location.reload(); } });
         }
         
-        // QR/바코드 스캐너 박스 크기 조절 및 반응 속도 개선
-        const html5QrcodeScanner = new Html5QrcodeScanner("reader", { fps: 15, qrbox: { width: 250, height: 150 } });
+        const html5QrcodeScanner = new Html5QrcodeScanner("reader", { fps: 10, qrbox: { width: 250, height: 150 } });
         html5QrcodeScanner.render(onScanSuccess);
     </script>
 </body>
