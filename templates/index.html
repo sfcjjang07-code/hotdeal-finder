@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>⚡ 핫딜 판독기</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+    <script src="https://unpkg.com/html5-qrcode"></script>
+</head>
+<body class="bg-gray-900 text-gray-100 min-h-screen flex flex-col items-center p-4">
+    <header class="w-full max-w-md text-center my-6">
+        <h1 class="text-3xl font-extrabold text-amber-400">⚡ 핫딜 판독기</h1>
+        <p class="text-gray-400 text-sm mt-1">바코드를 찍어 역대 최저가와 비교하세요</p>
+    </header>
+    <main class="w-full max-w-md bg-gray-800 rounded-2xl shadow-xl p-4 space-y-6">
+        <div class="overflow-hidden rounded-xl bg-black border border-gray-700">
+            <div id="reader" class="w-full"></div>
+        </div>
+        <div id="result-section" class="hidden p-4 rounded-xl border border-gray-700 bg-gray-800 space-y-4">
+            <div id="product-info"></div>
+            <div id="compare-box" class="hidden space-y-2">
+                <label class="block text-sm font-semibold text-gray-300">현재 판매 가격 입력:</label>
+                <div class="flex gap-2">
+                    <input type="number" id="current-price" placeholder="원" class="w-full bg-gray-700 border border-gray-600 rounded-lg p-2 text-white focus:outline-none">
+                    <button onclick="comparePrice()" class="bg-amber-500 text-gray-950 font-bold px-4 py-2 rounded-lg">판독</button>
+                </div>
+                <div id="verdict" class="text-center font-extrabold text-xl mt-4"></div>
+            </div>
+            <div id="register-box" class="hidden space-y-3">
+                <p class="text-rose-400 text-sm">처음 보는 바코드입니다! 상품을 등록해 주세요.</p>
+                <input type="text" id="new-name" placeholder="상품명" class="w-full bg-gray-700 border border-gray-600 rounded-lg p-2 text-sm">
+                <input type="number" id="new-hotdeal" placeholder="목표 핫딜가 (원)" class="w-full bg-gray-700 border border-gray-600 rounded-lg p-2 text-sm">
+                <input type="number" id="new-normal" placeholder="평소 가격 (원)" class="w-full bg-gray-700 border border-gray-600 rounded-lg p-2 text-sm">
+                <button onclick="registerProduct()" class="w-full bg-emerald-500 text-white font-bold py-2 rounded-lg">내 장부에 저장하기</button>
+            </div>
+        </div>
+    </main>
+    <script>
+        let activeBarcode = ""; let targetHotdealPrice = 0;
+        function onScanSuccess(decodedText) {
+            if (activeBarcode === decodedText) return; activeBarcode = decodedText;
+            fetch(`/api/scan/${decodedText}`).then(res => res.json()).then(data => {
+                const resSection = document.getElementById('result-section');
+                const infoDiv = document.getElementById('product-info');
+                const compareBox = document.getElementById('compare-box');
+                const registerBox = document.getElementById('register-box');
+                resSection.classList.remove('hidden');
+                document.getElementById('verdict').innerText = "";
+                if (data.exists) {
+                    targetHotdealPrice = data.hotdeal_price;
+                    infoDiv.innerHTML = `<h2 class="text-xl font-bold text-emerald-400">${data.name}</h2><p class="text-sm text-gray-400">바코드: ${activeBarcode}</p><div class="mt-2 text-sm"><div>🔥 기준 핫딜가: <span class="text-amber-400 font-bold">${data.hotdeal_price}원</span></div></div>`;
+                    compareBox.classList.remove('hidden'); registerBox.classList.add('hidden');
+                } else {
+                    infoDiv.innerHTML = `<h2 class="text-xl font-bold text-gray-300">미등록 상품</h2><p class="text-sm text-gray-400">바코드: ${activeBarcode}</p>`;
+                    compareBox.classList.add('hidden'); registerBox.classList.remove('hidden');
+                }
+            });
+        }
+        function comparePrice() {
+            const current = parseInt(document.getElementById('current-price').value);
+            const verdict = document.getElementById('verdict');
+            if (current <= targetHotdealPrice) { verdict.className = "text-center font-extrabold text-2xl mt-4 text-emerald-400"; verdict.innerText = "🚨 역대급 핫딜! 당장 사세요! 🚨"; }
+            else { verdict.className = "text-center font-extrabold text-xl mt-4 text-rose-400"; verdict.innerText = "핫딜이 아닙니다."; }
+        }
+        function registerProduct() {
+            const name = document.getElementById('new-name').value;
+            const hotdeal_price = document.getElementById('new-hotdeal').value;
+            const normal_price = document.getElementById('new-normal').value;
+            fetch(`/api/scan/${activeBarcode}`, {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name, hotdeal_price, normal_price })
+            }).then(res => res.json()).then(data => { if(data.success) { alert(data.message); location.reload(); } });
+        }
+        const html5QrcodeScanner = new Html5QrcodeScanner("reader", { fps: 10, qrbox: 250 });
+        html5QrcodeScanner.render(onScanSuccess);
+    </script>
+</body>
+</html>
