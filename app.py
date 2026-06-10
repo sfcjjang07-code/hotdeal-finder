@@ -27,7 +27,6 @@ def init_db():
         )
     """
     )
-    # 클라우드 DB(PostgreSQL) 문법에 맞게 'ON CONFLICT' 구문 사용
     cursor.execute(
         "INSERT INTO products VALUES ('8801045291313', '햇반 210g', 900, 1300) ON CONFLICT (barcode) DO NOTHING"
     )
@@ -36,7 +35,6 @@ def init_db():
     conn.close()
 
 
-# 앱이 켜질 때 클라우드에 테이블을 자동으로 만듭니다.
 if DATABASE_URL:
     init_db()
 
@@ -46,6 +44,7 @@ def index():
     return render_template("index.html")
 
 
+# 1. 바코드 조회 및 신규 등록 API
 @app.route("/api/scan/<barcode>", methods=["GET", "POST"])
 def scan_barcode(barcode):
     conn = get_db_connection()
@@ -53,7 +52,6 @@ def scan_barcode(barcode):
 
     if request.method == "GET":
         try:
-            # PostgreSQL 표준에 맞게 %s 사용
             cursor.execute(
                 "SELECT * FROM products WHERE barcode = %s", (barcode,)
             )
@@ -98,6 +96,32 @@ def scan_barcode(barcode):
         finally:
             cursor.close()
             conn.close()
+
+
+# ★ 2. [신규 추가] 역대 최저가 가격 업데이트 API
+@app.route("/api/update/<barcode>", methods=["POST"])
+def update_price(barcode):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    data = request.json
+    try:
+        # 해당 바코드의 hotdeal_price를 새로운 가격으로 업데이트
+        cursor.execute(
+            "UPDATE products SET hotdeal_price = %s WHERE barcode = %s",
+            (data["hotdeal_price"], barcode),
+        )
+        conn.commit()
+        return jsonify(
+            {
+                "success": True,
+                "message": "💥 역대 최저가가 성공적으로 갱신되었습니다!",
+            }
+        )
+    except Exception as e:
+        return jsonify({"success": False, "message": str(e)}), 500
+    finally:
+        cursor.close()
+        conn.close()
 
 
 if __name__ == "__main__":
